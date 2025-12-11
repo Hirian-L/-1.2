@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>天策 — 抓取小游戏（网页版）</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <h1 id="title">天策模拟器</h1>
+    <div id="main">
+      <canvas id="gameCanvas" width="640" height="480"></canvas>
+      <div id="leftStats">
+        <p id="elapsed"></p>
+        <p id="failures"></p>
+      </div>
+    </div>
+    <div id="ui">
+      <p id="stateText">状态：--</p>
+      <p id="hint">按 空格 在停顿窗口内抓取</p>
+      <p id="cooldown">大旋转冷却：--</p>
+      <button id="captureBtn" style="margin-top:8px; padding:8px 12px; font-size:16px;">抓取</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+  <script src="responsive_game.js"></script>
+</body>
+</html>

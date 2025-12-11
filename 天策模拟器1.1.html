@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>天策模拟器 — 单文件版</title>
+  <style>
+    * { box-sizing: border-box; }
+    html,body{ height:100%; margin:0; font-family: Arial, Helvetica, sans-serif; background:#1e1e1e; color:#ddd }
+    #app{ display:flex; align-items:center; justify-content:center; height:100%; flex-direction:column }
+    #title{ color:#fff; margin:12px 0 6px 0 }
+    #main{ display:flex; align-items:center; gap:18px }
+    canvas{ background:#1b1b1b; border:1px solid #333; box-shadow:0 6px 20px rgba(0,0,0,0.6) }
+    #leftStats{ width:180px; color:#cfe; text-align:left }
+    #leftStats p{ margin:6px 0; font-size:16px }
+    #ui{ margin-top:12px; text-align:center }
+    #hint{ color:#ffd880 }
+    #cooldown{ color:#9ecbff }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1 id="title">天策模拟器</h1>
+    <div id="main">
+      <canvas id="gameCanvas" width="640" height="480"></canvas>
+      <div id="leftStats">
+        <p id="elapsed"></p>
+        <p id="failures"></p>
+      </div>
+    </div>
+    <div id="ui">
+      <p id="stateText">状态：--</p>
+      <p id="hint">按 空格 在停顿窗口内抓取</p>
+      <p id="cooldown">大旋转冷却：--</p>
+    </div>
+  </div>
+
+  <script>
+  // 响应式单文件脚本（已集成）
+  (function(){
+    // 内嵌图片 data URL 占位，会被 embed 脚本替换为实际 data URL
+    const CENTER_DATA_URL = '__CENTER_IMAGE_DATA_URL__';
+
+    // 响应式画布设置
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const CANVAS_WIDTH = 640;
+    const CANVAS_HEIGHT = 480;
+
+    // 参数（秒）
+    const ROLL_DURATION = 1.0;
+    const PAUSE_DURATION = 0.2;
+    const BIG_ROT_DURATION = 1.2;
+    const BIG_ROT_COOLDOWN = 6.0;
+    const ROLL_ANGLE = 360;
+    const BIG_ROT_ANGLE = 720;
+
+    // 游戏状态
+    let state = 'rolling';
+    let stateStart = performance.now();
+    let baseAngle = 0;
+    let angle = 0;
+    let lastBigTime = -BIG_ROT_COOLDOWN * 1000;
+    let caught = false;
+
+    // 玩家抓取相关
+    const CAPTURE_COOLDOWN = 1500;
+    let lastCaptureAttemptTime = -Infinity;
+    let failureCount = 0;
+    let failureMessage = '';
+    let failureMessageTime = -Infinity;
+    const FAILURE_MESSAGE_DURATION = 2000;
+
+    // 回合开始时间
+    let roundStartTime = performance.now();
+
+    // 矩形大小（根据画布大小调整）
+    let rectW = 200;
+    let rectH = 120;
+
+    // 图片加载（使用内嵌 data URL 或回退到同目录的文件）
+    const centerImg = new Image();
+    if (CENTER_DATA_URL && CENTER_DATA_URL !== '__CENTER_IMAGE_DATA_URL__') {
+      centerImg.src = CENTER_DATA_URL;
+    } else {
+      centerImg.src = 'center.png';
+    }
+
+    // UI 元素
+    const stateText = document.getElementById('stateText');
+    const hint = document.getElementById('hint');
+    const cooldownEl = document.getElementById('cooldown');
+    const captureBtn = document.getElementById('captureBtn');
+
+    // 工具函数
+    function nowMs() { return performance.now(); }
+    function timeInStateMs() { return nowMs() - stateStart; }
+    function startState(s) { state = s; stateStart = nowMs(); }
+
+    // 调整画布大小
+    function resizeCanvas() {
+      const container = canvas.parentElement;
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      // 保持 4:3 比例
+      const targetWidth = Math.min(containerWidth, containerHeight * 4/3);
+      const targetHeight = targetWidth * 3/4;
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
+      canvas.style.width = targetWidth + 'px';
+      canvas.style.height = targetHeight + 'px';
+      rectW = CANVAS_WIDTH * 0.3125; // 200/640
+      rectH = CANVAS_HEIGHT * 0.25;  // 120/480
+    }
+
+    // 决定是否进行大旋转
+    function decideBigRotation(now) {
+      if ((now - lastBigTime) >= BIG_ROT_COOLDOWN * 1000 && Math.random() < 0.5) return true;
+      return false;
+    }
+
+    // 处理抓取尝试
+    function attemptCapture() {
+      if (state === 'caught_pause') { continueGame(); return; }
+      const now = nowMs();
+      if (now - lastCaptureAttemptTime < CAPTURE_COOLDOWN) return;
+      lastCaptureAttemptTime = now;
+      if (state === 'pause' && timeInStateMs() <= PAUSE_DURATION * 1000) {
+        caught = true; startState('caught_pause');
+        const elapsed = (now - roundStartTime) / 1000;
+        const elapsedEl = document.getElementById('elapsed');
+        const failuresEl = document.getElementById('failures');
+        if (elapsedEl) elapsedEl.textContent = `耗时：${elapsed.toFixed(2)}s`;
+        if (failuresEl) failuresEl.textContent = `失败次数：${failureCount}`;
+      } else {
+        failureCount++; if (!failureMessage) failureMessage = '后跳都抓不到？杂鱼'; else failureMessage += '杂鱼';
+        failureMessageTime = now;
+      }
+    }
+
+    function continueGame() {
+      caught = false; baseAngle = angle % 360; roundStartTime = nowMs(); failureCount = 0;
+      const elapsedEl = document.getElementById('elapsed'); const failuresEl = document.getElementById('failures');
+      if (elapsedEl) elapsedEl.textContent = ''; if (failuresEl) failuresEl.textContent = '';
+      startState('rolling');
+    }
+
+    // 事件绑定
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); attemptCapture(); } });
+    canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); attemptCapture(); });
+    if (captureBtn) captureBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); attemptCapture(); });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+
+    // 更新与绘制
+    function update(ms) {
+      const now = nowMs();
+      if (state === 'rolling'){
+        const t = Math.min(1, timeInStateMs() / (ROLL_DURATION*1000));
+        angle = baseAngle + t * ROLL_ANGLE;
+        if (t >= 1.0){ if (decideBigRotation(now)) { lastBigTime = now; baseAngle = angle % 360; startState('big_rot'); } else { baseAngle = angle % 360; startState('pause'); } }
+      } else if (state === 'pause') { angle = baseAngle; if (timeInStateMs() >= PAUSE_DURATION*1000) { if (!caught) { baseAngle = angle % 360; startState('rolling'); } } }
+      else if (state === 'big_rot') { const t = Math.min(1, timeInStateMs() / (BIG_ROT_DURATION*1000)); angle = baseAngle + t * BIG_ROT_ANGLE; if (t >= 1.0) { baseAngle = angle % 360; startState('rolling'); } }
+      else if (state === 'caught_pause') { angle = baseAngle % 360; }
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
+      ctx.save(); ctx.translate(CANVAS_WIDTH/2, CANVAS_HEIGHT/2); ctx.rotate(-angle * Math.PI/180);
+      if (centerImg && centerImg.complete && centerImg.naturalWidth) {
+        const iw = centerImg.naturalWidth, ih = centerImg.naturalHeight;
+        const scale = Math.min(rectW / iw, rectH / ih); const drawW = iw * scale, drawH = ih * scale;
+        ctx.drawImage(centerImg, -drawW/2, -drawH/2, drawW, drawH);
+      } else { ctx.fillStyle='#c8643c'; ctx.fillRect(-rectW/2, -rectH/2, rectW, rectH); }
+      ctx.restore();
+
+      stateText.textContent = `状态：${state === 'rolling' ? '翻滚中' : state === 'pause' ? '停顿窗口' : state === 'big_rot' ? '大旋转' : '抓取成功'}`;
+      if (state === 'pause') { const remaining = Math.max(0, PAUSE_DURATION - timeInStateMs()/1000); if (window.innerWidth>768) hint.textContent = `停顿窗口：${remaining.toFixed(2)}s — 在此按 空格 抓取`; else hint.textContent=`停顿窗口：${remaining.toFixed(2)}s — 点击按钮抓取`; }
+      else if (state==='caught_pause'){ hint.textContent='抓取成功！点击继续'; if (captureBtn) captureBtn.textContent='继续游戏'; }
+      else if (state==='big_rot'){ const remaining=Math.max(0, BIG_ROT_DURATION - timeInStateMs()/1000); hint.textContent=`大旋转中：${remaining.toFixed(2)}s`; if (captureBtn) captureBtn.textContent='抓取'; }
+      else { if (window.innerWidth>768) hint.textContent='按空格在停顿窗口内抓取'; else hint.textContent='点击按钮在停顿窗口内抓取'; if (captureBtn) captureBtn.textContent='抓取'; }
+
+      const sinceBig=(nowMs()-lastBigTime)/1000; const cd=Math.max(0, BIG_ROT_COOLDOWN - sinceBig); cooldownEl.textContent = `大旋转冷却：${cd.toFixed(1)}s`;
+
+      ctx.fillStyle='#ddd'; ctx.font='16px Arial'; ctx.fillText(`角度: ${(angle%360).toFixed(1)}°`, 10, 20);
+      const now = nowMs(); if (now - failureMessageTime <= FAILURE_MESSAGE_DURATION) { ctx.fillStyle='#ffd080'; ctx.font='20px Arial'; ctx.textAlign='center'; ctx.fillText(failureMessage, CANVAS_WIDTH/2, CANVAS_HEIGHT/2 - rectH/2 - 20); }
+    }
+
+    function loop(ms){ update(ms); draw(); requestAnimationFrame(loop); }
+
+    function init(){ document.body.classList.add('noselect'); resizeCanvas(); window.addEventListener('resize', resizeCanvas); startState('rolling'); requestAnimationFrame(loop); }
+    window.addEventListener('load', init);
+  })();
+  </script>
+</body>
+</html>

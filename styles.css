@@ -1,0 +1,13 @@
+* { box-sizing: border-box; }
+html,body{ height:100%; margin:0; font-family: Arial, Helvetica, sans-serif; background:#1e1e1e; color:#ddd }
+#app{ display:flex; align-items:center; justify-content:center; height:100%; flex-direction:column }
+#app{ display:flex; align-items:center; justify-content:center; height:100%; flex-direction:column }
+#title{ color:#fff; margin:12px 0 6px 0 }
+#main{ display:flex; align-items:center; gap:18px }
+canvas{ background:#1b1b1b; border:1px solid #333; box-shadow:0 6px 20px rgba(0,0,0,0.6) }
+#leftStats{ width:180px; color:#cfe; text-align:left }
+#leftStats p{ margin:6px 0; font-size:16px }
+#ui{ margin-top:12px; text-align:center }
+#stateText{ margin:2px 0 }
+#hint{ margin:2px 0; color:#ffd880 }
+#cooldown{ margin:2px 0; color:#9ecbff }
